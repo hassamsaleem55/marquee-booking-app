@@ -1,35 +1,53 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { bookingAPI } from '../utils/api';
+import { bookingAPI, cmsAPI } from '../utils/api'; // Added cmsAPI for packages
 import { useAuth } from '../context/AuthContext';
 import Calendar from 'react-calendar';
+import { Check, Clock, Users, Star } from 'lucide-react';
 import 'react-calendar/dist/Calendar.css';
+
+// Predefined Luxury Time Slots
+const TIME_SLOTS = [
+  { id: 'morning', label: 'Morning Elegance', time: '09:00 AM - 01:00 PM', value: { start: '09:00', end: '13:00' } },
+  { id: 'afternoon', label: 'Afternoon Delight', time: '02:00 PM - 06:00 PM', value: { start: '14:00', end: '18:00' } },
+  { id: 'evening', label: 'Grand Evening', time: '07:00 PM - 12:00 AM', value: { start: '19:00', end: '00:00' } }
+];
 
 const Booking = () => {
   const { user } = useAuth();
+  
+  // State
+  const [packages, setPackages] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+
   const [formData, setFormData] = useState({
     guestName: user?.name || '',
     guestEmail: user?.email || '',
     guestPhone: user?.phone || '',
-    eventDate: '',
-    startTime: '',
-    endTime: '',
     eventType: 'wedding',
     guestCount: '',
-    package: '',
-    services: [],
+    packageId: '', // Changed to store ID
     specialRequests: ''
   });
 
-  const [packages, setPackages] = useState([]);
-  const [services, setServices] = useState([]);
-  const [availableSlots, setAvailableSlots] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
-
+  // Fetch Packages on Mount
   useEffect(() => {
-    // Pre-fill form if user is logged in
+    const fetchPackages = async () => {
+      try {
+        const res = await cmsAPI.getPackages();
+        setPackages(res.data.packages || []);
+      } catch (error) {
+        console.error("Error loading packages", error);
+      }
+    };
+    fetchPackages();
+  }, []);
+
+  // Update form if user logs in
+  useEffect(() => {
     if (user) {
       setFormData(prev => ({
         ...prev,
@@ -40,263 +58,221 @@ const Booking = () => {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (formData.eventDate) {
-      fetchAvailableSlots(formData.eventDate);
-    }
-  }, [formData.eventDate]);
-
-  const fetchAvailableSlots = async (date) => {
-    try {
-      const response = await bookingAPI.getAvailableSlots({ date });
-      setAvailableSlots(response.data.slots || []);
-    } catch (error) {
-      console.error('Error fetching slots:', error);
-    }
-  };
-
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    if (type === 'checkbox') {
-      setFormData(prev => ({
-        ...prev,
-        services: checked
-          ? [...prev.services, value]
-          : prev.services.filter(s => s !== value)
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleDateChange = (date) => {
     setSelectedDate(date);
-    const dateStr = date.toISOString().split('T')[0];
-    setFormData(prev => ({ ...prev, eventDate: dateStr }));
+    setSelectedSlot(null); // Reset slot on date change to ensure availability check (if needed later)
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!selectedSlot) {
+      setMessage({ type: 'error', text: 'Please select a time slot for your event.' });
+      return;
+    }
+
     setLoading(true);
     setMessage({ type: '', text: '' });
 
+    const payload = {
+      ...formData,
+      eventDate: selectedDate.toISOString().split('T')[0],
+      startTime: selectedSlot.value.start,
+      endTime: selectedSlot.value.end,
+      // Map package ID to name if backend expects name, or send ID
+      package: packages.find(p => p._id === formData.packageId)?.name || 'Custom'
+    };
+
     try {
-      await bookingAPI.createBooking(formData);
-      setMessage({ type: 'success', text: 'Booking request submitted successfully! We will contact you soon.' });
-      setFormData({
-        guestName: '',
-        guestEmail: '',
-        guestPhone: '',
-        eventDate: '',
-        startTime: '',
-        endTime: '',
-        eventType: 'wedding',
-        guestCount: '',
-        package: '',
-        services: [],
-        specialRequests: ''
-      });
+      await bookingAPI.createBooking(payload);
+      setMessage({ type: 'success', text: 'Request received. Our concierge will contact you shortly to finalize details.' });
+      // Reset form logic here if needed
     } catch (error) {
-      setMessage({
-        type: 'error',
-        text: error.response?.data?.message || 'Failed to submit booking. Please try again.'
-      });
+      setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to submit booking.' });
     } finally {
       setLoading(false);
     }
   };
 
+  // Styling Classes
+  const inputClass = "w-full px-4 py-3 bg-white border border-stone-200 text-stone-900 focus:outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500 transition-all text-sm placeholder-stone-400";
+  const labelClass = "block text-xs font-bold uppercase tracking-widest text-stone-500 mb-2";
+
   return (
-    <div className="section-padding bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
-      <div className="container-custom max-w-5xl">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-semibold mb-4 text-gray-900">
-            Book Your Event
-          </h1>
-          <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-            Fill out the form below to request a booking. We'll get back to you within 24 hours.
+    <div className="section-padding bg-stone-50 min-h-screen">
+      <div className="container-custom max-w-6xl">
+        
+        {/* Header */}
+        <div className="text-center mb-16 animate-fade-in-up">
+          <span className="text-gold-500 text-xs font-bold uppercase tracking-[0.3em] mb-4 block">Reservations</span>
+          <h1 className="text-4xl md:text-5xl font-serif text-stone-900 mb-4">Curate Your Experience</h1>
+          <p className="text-stone-500 font-light max-w-2xl mx-auto">
+            Select your preferred date and collection. Availability is real-time.
           </p>
-          {!user && (
-            <p className="text-sm text-gray-500 mt-4">
-              <Link to="/login" className="text-gray-900 font-semibold hover:underline">Sign in</Link>
-              {' or '}
-              <Link to="/register" className="text-gray-900 font-semibold hover:underline">create an account</Link>
-              {' to track your bookings'}
-            </p>
-          )}
         </div>
 
+        {/* Status Message */}
         {message.text && (
-          <div className={`mb-6 p-4 rounded-md border ${
-            message.type === 'success' 
-              ? 'bg-green-50 border-green-200 text-green-800' 
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}>
-            <div className="flex items-center">
-              <span className="font-medium text-sm">{message.text}</span>
-            </div>
+          <div className={`mb-10 p-4 flex items-center justify-center gap-3 ${message.type === 'success' ? 'bg-stone-900 text-white' : 'bg-red-50 text-red-900 border border-red-200'}`}>
+            {message.type === 'success' && <Check size={18} className="text-gold-500" />}
+            <span className="font-serif tracking-wide">{message.text}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="card-premium p-8 md:p-10">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div>
-              <label className="block text-sm font-bold mb-3 text-gray-700">Guest Name *</label>
-              <input
-                type="text"
-                name="guestName"
-                value={formData.guestName}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all bg-white text-sm"
-                placeholder="Enter your full name"
-              />
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+          
+          {/* LEFT COLUMN: Date & Time (Calendar) */}
+          <div className="lg:col-span-7 space-y-8 animate-fade-in-up delay-100">
+            
+            {/* Calendar Widget */}
+            <div className="bg-white p-8 shadow-sm border border-stone-100">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-gold-600"><Clock size={16}/></div>
+                <h3 className="font-serif text-xl text-stone-900">Select Date</h3>
+              </div>
+              
+              <div className="calendar-luxury-wrapper">
+                <Calendar 
+                  onChange={handleDateChange} 
+                  value={selectedDate} 
+                  minDate={new Date()}
+                  className="w-full border-none font-sans text-stone-600"
+                  tileClassName={({ activeDate, date, view }) => 
+                    `p-4 hover:bg-stone-50 transition-colors rounded-sm text-sm font-medium
+                    ${view === 'month' && date.getDay() === 0 ? 'text-stone-400' : ''}`
+                  }
+                />
+              </div>
             </div>
+
+            {/* Time Slots */}
             <div>
-              <label className="block text-sm font-bold mb-3 text-gray-700">Email *</label>
-              <input
-                type="email"
-                name="guestEmail"
-                value={formData.guestEmail}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all bg-white text-sm"
-                placeholder="your.email@example.com"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold mb-3 text-gray-700">Phone *</label>
-              <input
-                type="tel"
-                name="guestPhone"
-                value={formData.guestPhone}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all bg-white text-sm"
-                placeholder="+1 (555) 123-4567"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold mb-3 text-gray-700">Event Type *</label>
-              <select
-                name="eventType"
-                value={formData.eventType}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all bg-white text-sm"
-              >
-                <option value="wedding">Wedding</option>
-                <option value="birthday">Birthday</option>
-                <option value="corporate">Corporate</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-bold mb-3 text-gray-700">Guest Count *</label>
-              <input
-                type="number"
-                name="guestCount"
-                value={formData.guestCount}
-                onChange={handleChange}
-                min="1"
-                required
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all bg-white text-sm"
-                placeholder="Number of guests"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold mb-3 text-gray-700">Event Date *</label>
-              <input
-                type="date"
-                name="eventDate"
-                value={formData.eventDate}
-                onChange={handleChange}
-                min={new Date().toISOString().split('T')[0]}
-                required
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all bg-white text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold mb-3 text-gray-700">Start Time *</label>
-              <select
-                name="startTime"
-                value={formData.startTime}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all bg-white text-sm"
-              >
-                <option value="">Select start time</option>
-                {availableSlots
-                  .filter(slot => slot.available)
-                  .map((slot, idx) => (
-                    <option key={idx} value={slot.start}>{slot.start}</option>
-                  ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-bold mb-3 text-gray-700">End Time *</label>
-              <select
-                name="endTime"
-                value={formData.endTime}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all bg-white text-sm"
-              >
-                <option value="">Select end time</option>
-                {availableSlots
-                  .filter(slot => slot.available && (!formData.startTime || slot.start > formData.startTime))
-                  .map((slot, idx) => (
-                    <option key={idx} value={slot.end}>{slot.end}</option>
-                  ))}
-              </select>
+              <h3 className="font-serif text-xl text-stone-900 mb-6 flex items-center gap-3">
+                Select Session <span className="text-stone-300 text-sm font-sans font-normal uppercase tracking-wider">(Required)</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {TIME_SLOTS.map((slot) => (
+                  <div 
+                    key={slot.id}
+                    onClick={() => setSelectedSlot(slot)}
+                    className={`cursor-pointer p-6 border transition-all duration-300 relative group
+                      ${selectedSlot?.id === slot.id 
+                        ? 'bg-stone-900 border-stone-900 text-white shadow-xl transform -translate-y-1' 
+                        : 'bg-white border-stone-200 text-stone-500 hover:border-gold-500 hover:text-stone-900'}`}
+                  >
+                    {selectedSlot?.id === slot.id && (
+                      <div className="absolute top-3 right-3 text-gold-500"><Check size={16} /></div>
+                    )}
+                    <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${selectedSlot?.id === slot.id ? 'text-gold-500' : 'text-stone-400'}`}>
+                      {slot.id}
+                    </p>
+                    <p className="font-serif text-lg mb-1">{slot.label}</p>
+                    <p className="text-xs opacity-70">{slot.time}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="mb-8">
-            <label className="block text-sm font-bold mb-3 text-gray-700">Special Requests</label>
-            <textarea
-              name="specialRequests"
-              value={formData.specialRequests}
-              onChange={handleChange}
-              rows="4"
-              className="w-full px-5 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white resize-none"
-              placeholder="Any special requirements or requests..."
-            />
-          </div>
-
-          <div className="mb-8 p-6 bg-gray-50 rounded-md border border-gray-200">
-            <label className="block text-sm font-semibold mb-4 text-gray-900">Select Date</label>
-            <div className="flex justify-center">
-              <Calendar
-                onChange={handleDateChange}
-                value={selectedDate}
-                minDate={new Date()}
-                className="rounded-md"
-              />
+          {/* RIGHT COLUMN: Details Form */}
+          <div className="lg:col-span-5 space-y-8 animate-fade-in-up delay-200">
+            
+            {/* Personal Info Card */}
+            <div className="bg-white p-8 shadow-sm border border-stone-100">
+              <h3 className="font-serif text-xl text-stone-900 mb-6">Guest Details</h3>
+              <div className="space-y-5">
+                <div><label className={labelClass}>Full Name</label><input type="text" name="guestName" value={formData.guestName} onChange={handleChange} required className={inputClass} placeholder="John Doe" /></div>
+                <div><label className={labelClass}>Email Address</label><input type="email" name="guestEmail" value={formData.guestEmail} onChange={handleChange} required className={inputClass} placeholder="john@example.com" /></div>
+                <div><label className={labelClass}>Phone Number</label><input type="tel" name="guestPhone" value={formData.guestPhone} onChange={handleChange} required className={inputClass} placeholder="+1 (555) 000-0000" /></div>
+              </div>
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <span className="flex items-center justify-center">
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Submitting...
-              </span>
-            ) : (
-              'Submit Booking Request'
-            )}
-          </button>
+            {/* Event Specifics Card */}
+            <div className="bg-white p-8 shadow-sm border border-stone-100">
+              <h3 className="font-serif text-xl text-stone-900 mb-6">Event Specifics</h3>
+              <div className="space-y-5">
+                
+                {/* Event Type & Guests Row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass}>Event Type</label>
+                    <select name="eventType" value={formData.eventType} onChange={handleChange} className={inputClass}>
+                      <option value="wedding">Wedding</option>
+                      <option value="corporate">Corporate</option>
+                      <option value="birthday">Social</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Guests</label>
+                    <div className="relative">
+                      <input type="number" name="guestCount" value={formData.guestCount} onChange={handleChange} min="1" required className={`${inputClass} pl-10`} placeholder="100" />
+                      <Users size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Package Selection */}
+                <div>
+                  <label className={labelClass}>Select Collection</label>
+                  <div className="relative">
+                    <select name="packageId" value={formData.packageId} onChange={handleChange} required className={`${inputClass} appearance-none cursor-pointer`}>
+                      <option value="">Select a package...</option>
+                      {packages.map(pkg => (
+                        <option key={pkg._id} value={pkg._id}>
+                          {pkg.name} — ${pkg.price.toLocaleString()}
+                        </option>
+                      ))}
+                    </select>
+                    <Star size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-gold-500 pointer-events-none" />
+                  </div>
+                  <p className="text-[10px] text-stone-400 mt-2 text-right">
+                    <Link to="/packages" className="hover:text-gold-500 transition-colors border-b border-stone-300 hover:border-gold-500 pb-0.5">View Collection Details</Link>
+                  </p>
+                </div>
+
+                {/* Special Requests */}
+                <div>
+                  <label className={labelClass}>Notes / Requests</label>
+                  <textarea name="specialRequests" value={formData.specialRequests} onChange={handleChange} rows="3" className={inputClass} placeholder="Dietary restrictions, color themes..." />
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <button type="submit" disabled={loading} className="w-full btn-primary py-5 text-sm shadow-xl hover:shadow-2xl hover:-translate-y-1">
+              {loading ? 'Processing Request...' : 'Confirm Reservation'}
+            </button>
+            <p className="text-center text-xs text-stone-400 font-light mt-4">
+              No payment required today. Availability is subject to confirmation.
+            </p>
+
+          </div>
         </form>
       </div>
+
+      {/* CSS Overrides for React Calendar to make it Luxury */}
+      <style>{`
+        .calendar-luxury-wrapper .react-calendar { width: 100%; border: none; font-family: 'Montserrat', sans-serif; }
+        .calendar-luxury-wrapper .react-calendar__navigation { margin-bottom: 20px; }
+        .calendar-luxury-wrapper .react-calendar__navigation button { font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; min-width: 44px; background: none; }
+        .calendar-luxury-wrapper .react-calendar__navigation button:enabled:hover,
+        .calendar-luxury-wrapper .react-calendar__navigation button:enabled:focus { background-color: #f5f5f4; }
+        .calendar-luxury-wrapper .react-calendar__month-view__weekdays { text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.1em; color: #d4af37; font-weight: 700; text-decoration: none; }
+        .calendar-luxury-wrapper abbr[title] { text-decoration: none; }
+        .calendar-luxury-wrapper .react-calendar__tile { padding: 1.5em 0.5em; color: #44403c; font-weight: 500; }
+        .calendar-luxury-wrapper .react-calendar__tile--now { background: #fafaf9; color: #d4af37; font-weight: bold; border: 1px solid #e7e5e4; }
+        .calendar-luxury-wrapper .react-calendar__tile--now:enabled:hover,
+        .calendar-luxury-wrapper .react-calendar__tile--now:enabled:focus { background: #f5f5f4; }
+        .calendar-luxury-wrapper .react-calendar__tile--active { background: #1c1917 !important; color: white !important; }
+        .calendar-luxury-wrapper .react-calendar__tile:enabled:hover,
+        .calendar-luxury-wrapper .react-calendar__tile:enabled:focus { background-color: #f5f5f4; color: #1c1917; }
+      `}</style>
     </div>
   );
 };
 
-export default Booking;
+export default Booking; 

@@ -115,7 +115,7 @@ const PackageCard = ({ pkg, featured }) => (
   <div className={`bg-white p-8 shadow-lg transition-transform hover:-translate-y-2 flex flex-col ${featured ? 'border-t-4 border-yellow-600 shadow-2xl scale-105 z-10' : ''}`}>
     <h3 className="text-2xl font-serif mb-4">{pkg.name}</h3>
     <div className="text-3xl font-serif mb-6">${pkg.price.toLocaleString()}<span className="text-xs text-stone-400 uppercase tracking-tighter ml-2">/ event</span></div>
-    <ul className="space-y-3 mb-8 flex-grow">
+    <ul className="space-y-3 mb-8 grow">
       {pkg.features?.slice(0, 4).map((f, i) => (
         <li key={i} className="text-sm text-stone-600 flex gap-3">
           <span className="text-yellow-600">✦</span> {f}
@@ -133,7 +133,7 @@ const GalleryBento = ({ gallery }) => (
         <SectionHeader title="Visual Stories" light />
         <Link to="/gallery" className="text-stone-400 hover:text-white transition-colors text-xs uppercase tracking-widest border-b border-transparent hover:border-white pb-1 mb-16">View Full Gallery</Link>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-4 h-auto md:h-[600px]">
+      <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-4 h-auto md:h-150">
         {gallery.map((item, index) => (
           <div key={item._id} className={`relative group overflow-hidden bg-stone-900 ${index === 0 ? 'md:col-span-2 md:row-span-2' : index === 1 ? 'md:col-span-2' : ''}`}>
             <img 

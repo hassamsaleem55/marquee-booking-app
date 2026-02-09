@@ -3,7 +3,7 @@ export const SectionHeader = ({ title, subtitle, light = false }) => (
     <h2 className={`text-4xl md:text-5xl font-serif mb-6 ${light ? 'text-white' : 'text-stone-900'}`}>
       {title}
     </h2>
-    <div className="w-16 h-[1px] bg-yellow-600 mx-auto" />
+    <div className="w-16 h-px bg-yellow-600 mx-auto" />
     {subtitle && (
       <p className={`mt-6 text-lg font-light max-w-2xl mx-auto ${light ? 'text-stone-400' : 'text-stone-500'}`}>
         {subtitle}
